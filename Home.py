@@ -3,7 +3,7 @@ from PIL import Image
 
 
 def main():
-    html_temp = """cd
+    html_temp = """
                 <div style="background-color:green;padding:5px">
                 <h2 style="color:white;text-align:center;">
                     Optimization of deep learning models
