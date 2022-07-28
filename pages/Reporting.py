@@ -1,88 +1,173 @@
 import streamlit as st
 import numpy as np
-import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
+import altair as alt
 import matplotlib.pyplot as plt
 from plotly.subplots import make_subplots
+from request import get_project_report
+from utils import size_human_format, format_seconds, format_milliseconds, get_difference_percentage
+
 
 def main():
-    st.title('Task_id: 12345678')
-    # First SubPlot
-    epoch = 20
-    x = np.arange(epoch)
-    train_loss = [3, 7, 8, 10, 5, 6, 9, 13, 9, 16,1, 4, 5, 6, 7, 3, 8, 9, 7, 5]
-    test_loss = [1, 4, 5, 6, 7, 3, 8, 9, 7, 5,3, 7, 8, 10, 5, 6, 9, 13, 9, 16]
-    train_accuracy = [20, 30, 60, 50, 80, 50, 90, 70, 80, 95,10, 40, 50, 60, 70, 30, 80, 90, 70, 50]
-    test_accuracy = [10, 40, 50, 60, 70, 30, 80, 90, 70, 50,20, 30, 60, 50, 80, 50, 90, 70, 80, 95]
-    true_positive = [10, 11, 10, 12, 10, 13, 14, 13, 12, 15,13, 14, 15, 12, 14, 15, 16, 15, 14, 13]
-    false_positive = [20, 23, 26, 25, 28, 25, 29, 27, 28, 29,21, 24, 25, 26, 27, 23, 28, 29, 27, 25]
-    true_negative = [40, 45, 45, 47, 48, 46, 47, 47, 48, 49,46, 49, 45, 45, 45, 45, 48, 45, 47, 45]
-    false_negative = [85, 86, 86, 87, 88, 88, 89, 87, 85, 98,89, 89, 90, 94, 95, 98, 80, 70, 79, 90]
+    st.set_page_config(layout="wide")
+    try:
+        query_params = st.experimental_get_query_params()
+        project_id = query_params['id'][0]
+        results = get_project_report(project_id)
+        tasks = results['tasks']
 
+        if len(tasks):
+            st.header(f"Project: {results['project_name']}")
+            # Display the accuracy graph
+            st.markdown("""---""")
+            st.header("Accuracy")
+            st.subheader("Accuracy Graph")
+            accuracy_graph_cols = st.columns(len(tasks))
+            for i, task in enumerate(tasks):
+                technique = task['task_result']['technique']
+                accuracy_graph_cols[i].write(technique.capitalize())
+                if technique == 'distillation':
+                    accuracy_data = pd.DataFrame(
+                        {
+                            'Epochs': np.arange(1, task['task_result']['epoch'] + 1),
+                            'Training Accuracy': task['task_result']['metrics']['hist']['sparse_categorical_accuracy']
+                        }
+                    )
+                    fig = px.line(
+                        accuracy_data,
+                        x='Epochs',
+                        y=['Training Accuracy'],
+                        labels={'Epochs': 'Epochs', 'Accuracy': 'Accuracy'}
+                    )
+                else:
+                    accuracy_data = pd.DataFrame(
+                        {
+                            'Epochs': np.arange(1, task['task_result']['epoch'] + 1),
+                            'Training Accuracy': task['task_result']['metrics']['hist']['sparse_categorical_accuracy'],
+                            'Validation accuracy': task['task_result']['metrics']['hist']['val_sparse_categorical_accuracy']
+                        }
+                    )
+                    fig = px.line(
+                        accuracy_data,
+                        x='Epochs',
+                        y=['Training Accuracy', 'Validation accuracy'],
+                        labels={'Epochs': 'Epochs', 'Training Accuracy': 'Training Accuracy',
+                                'Validation accuracy': 'Validation accuracy'}
+                    )
+                fig.update_layout(
+                    legend=dict(
+                        title=None, orientation="h", y=1, yanchor="bottom", x=0.5, xanchor="center"
+                    ),
+                    margin=dict(l=5, r=5, t=20, b=20)
+                )
+                accuracy_graph_cols[i].plotly_chart(
+                    fig, use_container_width=True)
 
-    st.header('Train and Test loss by epoch')
-    fig_loss = go.Figure()
-    fig_loss.add_trace(go.Scatter(
-        x=x,
-        y=train_loss,
-        name='train',  # Style name/legend entry with html tags
-        connectgaps=True  # override default to connect the gaps
+            # Display the accuracy on unseen data
+            st.subheader("Accuracy on unseen data")
+            accuracy_on_unseen_data_cols = st.columns(len(tasks))
+            for i, task in enumerate(tasks):
+                technique = task['task_result']['technique']
+                accuracy_on_unseen_data_cols[i].write(
+                    f"{technique.capitalize()} accuracy:")
+                accuracy_on_unseen_data_cols[i].header(
+                    f"{task['task_result']['metrics']['test accuracy'] * 100:.2f}%")
+                accuracy_on_unseen_data_cols[i].write(f"Baseline accuracy:")
+                accuracy_on_unseen_data_cols[i].header(
+                    f"{task['task_result']['baseline_accuracy']}%")
 
-    ))
-    fig_loss.add_trace(go.Scatter(
-        x=x,
-        y=test_loss,
-        name='test',
-    ))
+            # Display the size of the models
+            st.markdown("""---""")
+            st.subheader("Model Size")
+            size_cols = st.columns(len(tasks))
+            for i, task in enumerate(tasks):
+                technique = task['task_result']['technique']
+                size_cols[i].write(f"{technique.capitalize()} compression:")
+                if technique == 'pruning':
+                    size_cols[i].header(
+                        f"{get_difference_percentage(task['task_result']['metrics']['baseline model size'], task['task_result']['metrics']['pruned_model_size'])}")
+                    size_cols[i].write(
+                        f"{technique.capitalize()} size: {size_human_format(task['task_result']['metrics']['pruned_model_size'])}")
+                elif technique == 'quantization':
+                    size_cols[i].header(
+                        f"{get_difference_percentage(task['task_result']['metrics']['baseline model size'], task['task_result']['metrics']['quantized_model_size'])}")
+                    size_cols[i].write(
+                        f"{technique.capitalize()} size: {size_human_format(task['task_result']['metrics']['quantized_model_size'])}")
+                else:
+                    size_cols[i].header(
+                        f"{get_difference_percentage(task['task_result']['metrics']['baseline model size'], task['task_result']['metrics']['distilled model size'])}")
+                    size_cols[i].write(
+                        f"{technique.capitalize()} size: {size_human_format(task['task_result']['metrics']['distilled model size'])}")
 
-    st.write(fig_loss)
-###### Accuracy #####
-    st.header('Train and Test accuracy by epoch')
-    fig_accuracy = go.Figure()
-    fig_accuracy.add_trace(go.Scatter(
-        x=x,
-        y=train_accuracy,
-        name='train',  # Style name/legend entry with html tags
-        connectgaps=True  # override default to connect the gaps
+                size_cols[i].write(
+                    f"Baseline size: {size_human_format(task['task_result']['metrics']['baseline model size'])}")
 
-    ))
-    fig_accuracy.add_trace(go.Scatter(
-        x=x,
-        y=test_accuracy,
-        name='test',
-    ))
+            # Display the time spent
+            st.markdown("""---""")
+            st.subheader("Time")
+            time_cols = st.columns(len(tasks))
+            for i, task in enumerate(tasks):
+                technique = task['task_result']['technique']
+                time_cols[i].write(f"{technique.capitalize()} Training time:")
+                time_cols[i].header(
+                    f"{format_seconds(task['task_result']['metrics']['training time'])}")
+                time_cols[i].write(f"{technique.capitalize()} Inference time:")
+                time_cols[i].header(
+                    f"{format_milliseconds(task['task_result']['metrics']['inference time'])}")
 
-    st.write(fig_accuracy)
+            # Display the weights
+            st.markdown("""---""")
+            st.subheader("Weights")
+            weights_cols = st.columns(len(tasks))
+            for i, task in enumerate(tasks):
+                technique = task['task_result']['technique']
+                weights_cols[i].write(
+                    f"{technique.capitalize()} weight reduction:")
+                weights_cols[i].header(
+                    f"{get_difference_percentage(task['task_result']['metrics']['baseline parameters'], task['task_result']['metrics']['parameters'])}")
+                weights_cols[i].write(
+                    f"{technique.capitalize()} size: {task['task_result']['metrics']['parameters']}")
+                weights_cols[i].write(
+                    f"Baseline size: {task['task_result']['metrics']['baseline parameters']}")
 
-    ##### Confusion Matrix #####
+            # Display dowload button
+            st.markdown("""---""")
+            download_cols = st.columns(len(tasks))
+            for i, task in enumerate(tasks):
+                technique = task['task_result']['technique']
+                if technique == 'pruning':
+                    _file = open(
+                        f"{task['task_result']['project_path']}/pruned_model.h5", "rb")
+                    download_cols[i].download_button(
+                        label=f"Download {technique} model",
+                        data=_file,
+                        file_name=f"{technique}_model.h5"
+                    )
+                elif technique == 'quantization':
+                    _file = open(
+                        f"{task['task_result']['project_path']}/quantized_model_lite.tflite", "rb")
+                    download_cols[i].download_button(
+                        label=f"Download {technique} model",
+                        data=_file,
+                        file_name=f"{technique}_model.tflite"
+                    )
+                else:
+                    _file = open(
+                        f"{task['task_result']['project_path']}/distilled_model.h5", "rb")
+                    download_cols[i].download_button(
+                        label=f"Download {technique} model",
+                        data=_file,
+                        file_name=f"{technique}_model.h5"
+                    )
 
-    st.header('Confusion Matrix by epoch')
-    fig_matrix= go.Figure()
-    fig_matrix.add_trace(go.Scatter(
-        x=x,
-        y=true_negative,
-        name='true_negative',  # Style name/legend entry with html tags
-        connectgaps=True  # override default to connect the gaps
+        else:
+            st.write("No tasks found")
 
-    ))
-    fig_matrix.add_trace(go.Scatter(
-        x=x,
-        y=true_positive,
-        name='true_positive',
-    ))
-    fig_matrix.add_trace(go.Scatter(
-        x=x,
-        y=false_positive,
-        name='false_positive',
-    ))
-    fig_matrix.add_trace(go.Scatter(
-        x=x,
-        y=false_negative,
-        name='false_negative',
-    ))
-
-    st.write(fig_matrix)
+    except Exception as e:
+        st.write(e)
+        st.write('''Please create a project first''')
 
 
 if __name__ == '__main__':
-        main()
+    main()

@@ -55,4 +55,16 @@ def get_projects_status():
         return '0'
 
 
+# Get the report of project
+def get_project_report(project_id):
+    """Get the report of project"""
+    endPoint = URL + '/report/project/' + project_id
+    r = requests.get(url=endPoint)
+    if r.status_code == 200:
+        return r.json()
+    else:
+        print('Error During Query: getProject_Report()')
+        print(r)
+        return '0'
+
 # def getMetric(project_id):
