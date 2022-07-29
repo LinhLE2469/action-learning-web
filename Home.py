@@ -5,9 +5,9 @@ from PIL import Image
 def main():
     html_temp = """
                 <div style="background-color:green;padding:5px">
-                <h2 style="color:white;text-align:center;">
-                    Optimization of deep learning models
-                </h2>
+                    <h2 style="color:white;text-align:center;">
+                        OPTIM
+                    </h2>
                 </div>
             """
     st.markdown(html_temp, unsafe_allow_html=True)

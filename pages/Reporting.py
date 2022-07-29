@@ -127,9 +127,9 @@ def main():
                 weights_cols[i].header(
                     f"{get_difference_percentage(task['task_result']['metrics']['baseline parameters'], task['task_result']['metrics']['parameters'])}")
                 weights_cols[i].write(
-                    f"{technique.capitalize()} size: {task['task_result']['metrics']['parameters']}")
+                    f"{technique.capitalize()} weights: {task['task_result']['metrics']['parameters']}")
                 weights_cols[i].write(
-                    f"Baseline size: {task['task_result']['metrics']['baseline parameters']}")
+                    f"Baseline weights: {task['task_result']['metrics']['baseline parameters']}")
 
             # Display dowload button
             st.markdown("""---""")
